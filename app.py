@@ -10,7 +10,7 @@ from pathlib import Path
 app_ui = ui.page_fluid(
 
     # =========================
-    # ESTILOS + FUENTES
+    # ESTILOS
     # =========================
     ui.tags.head(
         ui.tags.link(
@@ -25,10 +25,7 @@ app_ui = ui.page_fluid(
             --bg: #fff9f5;
             --text: #2d3748;
             --primary: #22c55e;
-            --secondary: #e0f2fe;
             --header: #53a689;
-
-            --shadow: 0 4px 10px rgba(0,0,0,0.08);
         }
 
         body {
@@ -37,52 +34,30 @@ app_ui = ui.page_fluid(
             color: var(--text);
         }
 
-        h1, h2, h3 {
-            font-family: var(--font-title);
-            color: var(--header);
-        }
-
-        .header-box {
-            text-align: center;
-            padding: 20px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: var(--shadow);
-            margin-bottom: 20px;
-        }
+        h2, h3 { font-family: var(--font-title); color: var(--header); }
 
         .card {
             background: white;
             padding: 15px;
             border-radius: 12px;
-            box-shadow: var(--shadow);
             margin-bottom: 15px;
         }
 
-        table {
-            margin: auto;
-            text-align: center;
-        }
-
-        th, td {
+        table, th, td {
             text-align: center !important;
+            margin: auto;
         }
 
         .footer {
             text-align: center;
             font-size: 12px;
             color: gray;
-            margin-top: 30px;
-        }
-
-        .footer img {
-            height: 24px;
-            margin: 0 10px;
         }
 
         .note-box {
             background: #f0fdf4;
             border-left: 5px solid var(--primary);
+            padding: 10px;
         }
         """)
     ),
@@ -91,20 +66,24 @@ app_ui = ui.page_fluid(
     # HEADER
     # =========================
     ui.div(
-        ui.img(src="logo.png", height="90px"),
+        ui.img(
+            src="logo.png",
+            style="max-height:70px; width:auto; display:block; margin:auto;"
+        ),
         ui.h2("Sistema de Cálculo de Volumen Forestal"),
-        ui.p("Procesamiento de censos y generación de matrices diamétricas"),
-        class_="header-box"
+        ui.p("Procesamiento de censos de campo"),
+        class_="card",
+        style="text-align:center;"
     ),
 
     # =========================
     # CONTROLES
     # =========================
     ui.div(
-        ui.input_file("file", "Sube Excel de campo (.xlsx)"),
+        ui.input_file("file", "Sube Excel (.xlsx)"),
         ui.input_action_button("run", "Procesar"),
         ui.input_action_button("reset", "🔄 Reiniciar"),
-        ui.download_button("descargar", "⬇️ Descargar Excel"),
+        ui.download_button("descargar", "⬇️ Descargar"),
         class_="card"
     ),
 
@@ -118,13 +97,34 @@ app_ui = ui.page_fluid(
     ),
 
     # =========================
-    # NOTA TÉCNICA
+    # NOTA TÉCNICA + FORMATO
     # =========================
     ui.div(
-        ui.h5("Nota técnica"),
-        ui.p("Ecuación genérica para el cálculo de volumen en el género Pinus."),
+        ui.h5("📌 Nota técnica y formato de entrada"),
+
+        ui.p("Ecuación utilizada para el cálculo de volumen (género Pinus):"),
         ui.tags.code("VT = (0.0115833000 + 0.0000440250 × (Dn²) × AT)"),
-        ui.p("Donde Dn = diámetro (cm) y AT = altura (m)."),
+
+        ui.p("Donde:"),
+        ui.tags.ul(
+            ui.tags.li("VT = Volumen total (m³ vta)"),
+            ui.tags.li("Dn = Diámetro normal (cm)"),
+            ui.tags.li("AT = Altura total (m)")
+        ),
+
+        ui.p("Esta es una ecuación genérica para Pinus."),
+
+        ui.hr(),
+
+        ui.h6("📋 Formato esperado del archivo Excel"),
+        ui.tags.code("Coordenada | Especie | Diametro | Altura | Agente Causal"),
+
+        ui.p("Ejemplo de captura:"),
+        ui.tags.pre(
+            "1 | Pinus arizonica | 24 | 13 | Dendroctonus mexicanus\n"
+            "2 | Pinus arizonica | 10 | 5 | Dendroctonus mexicanus"
+        ),
+
         class_="card note-box"
     ),
 
@@ -141,8 +141,8 @@ app_ui = ui.page_fluid(
     # =========================
     ui.div(
         ui.p("Desarrollado por José Ricardo Eguiz Portillo | 2026 ©"),
-        ui.a(ui.img(src="gmail.png"), href="mailto:tu_correo@gmail.com"),
-        ui.a(ui.img(src="outlook.png"), href="mailto:tu_correo@outlook.com"),
+        ui.img(src="gmail.png", height="20px"),
+        ui.img(src="outlook.png", height="20px"),
         class_="footer"
     )
 )
@@ -156,6 +156,7 @@ def server(input, output, session):
     preview_data = reactive.Value(None)
     ruta_archivo = {"ruta": None}
 
+    # RESET
     @reactive.Effect
     @reactive.event(input.reset)
     def _():
@@ -163,24 +164,56 @@ def server(input, output, session):
         ruta_archivo["ruta"] = None
         estado.set("🔄 Sistema reiniciado")
 
+    # PROCESO
     @reactive.Effect
     @reactive.event(input.run)
     def _():
 
         if not input.file():
-            estado.set("⚠️ Sube un archivo Excel")
+            estado.set("⚠️ Debes subir un archivo Excel")
             return
 
         try:
             df = pd.read_excel(input.file()[0]["datapath"])
 
-            df.columns = df.columns.str.strip().str.lower().str.replace("#", "")
+            # NORMALIZAR
+            def norm(x):
+                return str(x).strip().lower()
 
-            cols = ["coordenada","especie","diametro","altura","agente causal"]
-            if not all(c in df.columns for c in cols):
-                estado.set("❌ Columnas incorrectas")
+            df.columns = [norm(c) for c in df.columns]
+
+            alias = {
+                "coordenada": ["coordenada","coord","punto"],
+                "especie": ["especie","sp"],
+                "diametro": ["diametro","dbh"],
+                "altura": ["altura","h"],
+                "agente causal": ["agente causal","plaga"]
+            }
+
+            mapeo = {}
+            for k, vals in alias.items():
+                for col in df.columns:
+                    if col in vals:
+                        mapeo[k] = col
+
+            faltantes = [k for k in alias if k not in mapeo]
+
+            if faltantes:
+                estado.set(
+                    "❌ Formato incorrecto del archivo\n\n"
+                    "📌 Debe contener:\n"
+                    "Coordenada | Especie | Diametro | Altura | Agente Causal\n\n"
+                    f"⚠️ Faltan: {faltantes}\n"
+                    f"🔍 Detectadas: {list(df.columns)}\n\n"
+                    "💡 Revisa nombres o encabezados"
+                )
                 return
 
+            df = df.rename(columns={v:k for k,v in mapeo.items()})
+
+            # =========================
+            # CÁLCULOS
+            # =========================
             df["categoria diametrica"] = round(df["diametro"]/5)*5
             df["categoria altura"] = round(df["altura"]/5)*5
 
@@ -190,34 +223,39 @@ def server(input, output, session):
             df["voltotal"] = df["volindividual"].sum()
             df["volcat"] = df["volindividualcat"].sum()
 
-            matriz_conteo = pd.pivot_table(df, index="categoria diametrica",
-                                           columns="categoria altura",
-                                           values="diametro", aggfunc="count", fill_value=0)
+            # MATRIZ
+            matriz = pd.pivot_table(
+                df,
+                index="categoria diametrica",
+                columns="categoria altura",
+                values="diametro",
+                aggfunc="count",
+                fill_value=0
+            )
 
-            matriz_volumen = pd.pivot_table(df, index="categoria diametrica",
-                                            columns="categoria altura",
-                                            values="volindividualcat", aggfunc="sum", fill_value=0)
-
+            # EXPORTAR
             tmp = tempfile.mkdtemp()
             ruta = os.path.join(tmp, "resultado.xlsx")
 
             with pd.ExcelWriter(ruta) as writer:
-                df.to_excel(writer, sheet_name="Datos", index=False)
-                matriz_conteo.to_excel(writer, sheet_name="Conteo")
-                matriz_volumen.to_excel(writer, sheet_name="Volumen")
+                df.to_excel(writer, index=False)
+                matriz.to_excel(writer, sheet_name="Matriz")
 
             ruta_archivo["ruta"] = ruta
 
             preview_data.set(df.head(10))
-            estado.set("✅ Proceso completado")
+            estado.set("✅ Procesado correctamente")
 
         except Exception as e:
             estado.set(f"❌ Error: {str(e)}")
 
+    # OUTPUTS
     @output
     @render.table
     def preview():
-        return preview_data.get() if preview_data.get() is not None else pd.DataFrame()
+        if preview_data.get() is None:
+            return pd.DataFrame({"Info": ["Sin datos aún"]})
+        return preview_data.get()
 
     @output
     @render.text
@@ -229,5 +267,7 @@ def server(input, output, session):
     def descargar():
         return ruta_archivo["ruta"]
 
+# =========================
+# APP
 # =========================
 app = App(app_ui, server, static_assets=Path(__file__).parent / "images")
